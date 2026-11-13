@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChangAR modellgenerátor</title>
+<!--
+  Builds assets/models/changar.glb in the browser with three.js:
+  portrait 24" monitor on a stand, a placeholder 3D-printed holder on top,
+  the 7" touchscreen with a Raspberry Pi 4 (+ 40 mm fan) on its back,
+  the Pi camera and the ultrasonic sensor, plus an "Explode" animation
+  (t = 0 assembled, t = 1 exploded) that the site scrubs.
+
+  Open it through the local server (http://localhost:8080/tools/changar-model.html)
+  and click the download link, then put the file in assets/models/.
+  All sizes are in metres. Change them in the "Dimensions" block.
+-->
+<style>
+  @font-face {
+    font-family: "Inter Var"; font-style: normal; font-weight: 100 900;
+    src: url("../vendor/fonts/inter-latin-opsz-normal.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: "Inter Var"; font-style: normal; font-weight: 100 900;
+    src: url("../vendor/fonts/inter-latin-ext-opsz-normal.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px; background: #0d0e12; color: #e8eaf0; font: 15px/1.5 "Inter Var", system-ui, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  #status { color: #9aa3b5; }
+  #status.ok { color: #6fd38f; }
+  #status.err { color: #ff8a7a; }
+  .previews { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin: 16px 0; }
+  .previews canvas { width: 240px; height: auto; border-radius: 8px; border: 1px solid #2a2d36; }
+  pre { white-space: pre-wrap; word-break: break-all; background: #16181f; border: 1px solid #2a2d36; border-radius: 8px; padding: 12px; font-size: 12px; }
+  a { color: #8ab4ff; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<h1>ChangAR · 3D modellgenerátor</h1>
+<p>Elkészíti az <code>assets/models/changar.glb</code> fájlt robbantott nézet animációval. A 3D nyomtatott tartó csak helyőrző, amíg a végleges terv el nem készül.</p>
+<p id="status">Generálás…</p>
+<p id="download"></p>
+<div class="previews" id="previews"></div>
+<pre id="out"></pre>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const $ = s => document.querySelector(s);
+const setStatus = (msg, cls = '') => { const el = $('#status'); el.textContent = msg; el.className = cls; };
+
+const DEG = Math.PI / 180;
+const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const FONT = '"Inter Var", system-ui, sans-serif';
+const BRAND = ['#6ee7ff', '#6d6bff', '#ff6ba1'];
+
+/* ======================================================================
+   Dimensions (metres). +Y up, +Z = front (towards the person), origin on
+   the desk under the monitor.
+   ====================================================================== */
+const MON = { w: 0.3129, h: 0.5453, d: 0.014, bottom: 0.10 };   // 24" 16:9 panel turned to portrait
+MON.yc = MON.bottom + MON.h / 2;
+MON.top = MON.bottom + MON.h;
+const SCREEN = { w: 0.2989, h: 0.5313 };                          // active area
+const TOUCH = { w: 0.193, h: 0.1108, active: [0.1549, 0.0862] }; // official 7" display glass
+const TILT = -15 * DEG;                                           // touchscreen leans back 15°
+const BRACKET_W = 0.22;
+const SHELF_Y = 0.780;                                            // centre of the level sensor shelf
+
+/* ======================================================================
+   Screen artwork (drawn on canvases, exported as emissive textures)
+   ====================================================================== */
+function makeCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function brandGrad(x, x0, y0, x1, y1) { const g = x.createLinearGradient(x0, y0, x1, y1); BRAND.forEach((c, i) => g.addColorStop(i / 2, c)); return g; }
+function rr(x, X, Y, W, H, R) { x.beginPath(); x.roundRect(X, Y, W, H, R); }
+function text(x, str, X, Y, font, fill, align = 'left') { x.font = font; x.fillStyle = fill; x.textAlign = align; x.textBaseline = 'alphabetic'; x.fillText(str, X, Y); }
+function disc(x, X, Y, r, fill) { x.beginPath(); x.arc(X, Y, r, 0, Math.PI * 2); x.fillStyle = fill; x.fill(); }
+function polyline(x, pts, w, style) {
+  x.save(); x.lineCap = 'round'; x.lineJoin = 'round'; x.lineWidth = w; x.strokeStyle = style;
+  x.beginPath(); x.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) x.lineTo(pts[i][0], pts[i][1]);
+  x.stroke(); x.restore();
+}
+
+// The big portrait monitor: the "mirror" view with pose tracking, a 2D garment and measurements.
+function drawMirror() {
+  const W = 1024, H = 1820, c = makeCanvas(W, H), x = c.getContext('2d');
+  let g = x.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#151824'); g.addColorStop(0.62, '#0c0e15'); g.addColorStop(1, '#08090d');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  x.fillStyle = 'rgba(255,255,255,0.03)'; x.fillRect(0, 1330, W, H - 1330);
+  x.fillStyle = 'rgba(255,255,255,0.07)'; x.fillRect(0, 1329, W, 2);
+  g = x.createRadialGradient(512, 860, 20, 512, 860, 660);
+  g.addColorStop(0, 'rgba(109,107,255,0.32)'); g.addColorStop(0.5, 'rgba(109,107,255,0.10)'); g.addColorStop(1, 'rgba(109,107,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+
+  // floor mark
+  x.save(); x.strokeStyle = 'rgba(110,231,255,0.65)'; x.lineWidth = 4; x.setLineDash([16, 12]);
+  x.beginPath(); x.ellipse(512, 1540, 210, 38, 0, 0, Math.PI * 2); x.stroke(); x.restore();
+
+  const J = {
+    nose: [512, 334], sL: [394, 478], sR: [630, 478], eL: [356, 728], eR: [668, 728], wL: [342, 934], wR: [682, 934],
+    hL: [466, 924], hR: [558, 924], kL: [458, 1222], kR: [566, 1222], aL: [454, 1500], aR: [570, 1500],
+  };
+  const skin = x.createLinearGradient(0, 240, 0, 1000); skin.addColorStop(0, '#e2e6ee'); skin.addColorStop(1, '#b3b9c6');
+  const pants = '#2d3652';
+
+  // legs, shoes
+  polyline(x, [J.hL, J.kL], 102, pants); polyline(x, [J.kL, J.aL], 80, pants);
+  polyline(x, [J.hR, J.kR], 102, pants); polyline(x, [J.kR, J.aR], 80, pants);
+  rr(x, 418, 884, 188, 110, 44); x.fillStyle = pants; x.fill();
+  x.fillStyle = '#eef0f4';
+  x.beginPath(); x.ellipse(J.aL[0] - 16, J.aL[1] + 36, 58, 26, 0, 0, Math.PI * 2); x.fill();
+  x.beginPath(); x.ellipse(J.aR[0] + 16, J.aR[1] + 36, 58, 26, 0, 0, Math.PI * 2); x.fill();
+
+  // arms, hands, neck, head, hair
+  polyline(x, [J.sL, J.eL, J.wL], 54, skin); polyline(x, [J.sR, J.eR, J.wR], 54, skin);
+  disc(x, J.wL[0] - 2, J.wL[1] + 36, 31, skin); disc(x, J.wR[0] + 2, J.wR[1] + 36, 31, skin);
+  rr(x, 484, 390, 56, 76, 22); x.fillStyle = skin; x.fill();
+  x.beginPath(); x.ellipse(512, 328, 64, 78, 0, 0, Math.PI * 2); x.fillStyle = skin; x.fill();
+  x.save(); x.beginPath(); x.ellipse(512, 328, 64, 78, 0, 0, Math.PI * 2); x.clip();
+  x.fillStyle = '#2b2622'; x.beginPath(); x.ellipse(512, 262, 84, 46, 0, 0, Math.PI * 2); x.fill(); x.restore();
+
+  // the virtual sweater, on its own layer so it can be shaded
+  const gc = makeCanvas(W, H), gx = gc.getContext('2d');
+  polyline(gx, [J.sL, [J.eL[0] - 4, J.eL[1]], [J.wL[0] - 2, J.wL[1] - 26]], 78, '#fff');
+  polyline(gx, [J.sR, [J.eR[0] + 4, J.eR[1]], [J.wR[0] + 2, J.wR[1] - 26]], 78, '#fff');
+  gx.fillStyle = '#fff';
+  gx.beginPath();
+  gx.moveTo(474, 444);
+  gx.quadraticCurveTo(420, 448, 388, 474);
+  gx.quadraticCurveTo(370, 500, 384, 584);
+  gx.quadraticCurveTo(414, 700, 426, 800);
+  gx.lineTo(420, 934); gx.lineTo(604, 934); gx.lineTo(598, 800);
+  gx.quadraticCurveTo(610, 700, 640, 584);
+  gx.quadraticCurveTo(654, 500, 636, 474);
+  gx.quadraticCurveTo(604, 448, 550, 444);
+  gx.quadraticCurveTo(512, 490, 474, 444);
+  gx.closePath(); gx.fill();
+  gx.globalCompositeOperation = 'source-in';
+  gx.fillStyle = brandGrad(gx, 360, 440, 690, 940); gx.fillRect(0, 0, W, H);
+  gx.globalCompositeOperation = 'source-atop';
+  gx.fillStyle = 'rgba(255,255,255,0.06)';
+  for (let X = 300; X < 720; X += 12) gx.fillRect(X, 430, 4, 520);       // knit ribs
+  gx.fillStyle = 'rgba(0,0,0,0.16)';
+  gx.fillRect(400, 900, 230, 40); gx.fillRect(296, 878, 96, 44); gx.fillRect(632, 878, 96, 44); // hem and cuffs
+  const sh = gx.createLinearGradient(360, 0, 690, 0);
+  sh.addColorStop(0, 'rgba(255,255,255,0.14)'); sh.addColorStop(0.55, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,0.22)');
+  gx.fillStyle = sh; gx.fillRect(0, 0, W, H);
+  x.drawImage(gc, 0, 0);
+
+  // pose skeleton
+  const bones = [['sL', 'sR'], ['sL', 'eL'], ['eL', 'wL'], ['sR', 'eR'], ['eR', 'wR'], ['sL', 'hL'], ['sR', 'hR'], ['hL', 'hR'], ['hL', 'kL'], ['kL', 'aL'], ['hR', 'kR'], ['kR', 'aR']];
+  x.save(); x.strokeStyle = 'rgba(255,255,255,0.6)'; x.lineWidth = 4; x.lineCap = 'round';
+  for (const [a, b] of bones) { x.beginPath(); x.moveTo(J[a][0], J[a][1]); x.lineTo(J[b][0], J[b][1]); x.stroke(); }
+  x.beginPath(); x.moveTo(J.nose[0], J.nose[1]); x.lineTo(512, 478); x.stroke();
+  x.restore();
+  for (const k of Object.keys(J)) {
+    x.beginPath(); x.arc(J[k][0], J[k][1], 13, 0, Math.PI * 2); x.strokeStyle = '#6ee7ff'; x.lineWidth = 4; x.stroke();
+    disc(x, J[k][0], J[k][1], 8, '#ffffff');
+  }
+
+  // width lines + chips (one front camera measures widths, not circumferences)
+  const meas = [['Mellkas', '34 cm', 600, 382, 642], ['Derék', '29 cm', 800, 426, 598], ['Csípő', '36 cm', 904, 420, 604]];
+  for (const [label, val, y, l, r] of meas) {
+    x.save(); x.strokeStyle = '#6ee7ff'; x.lineWidth = 4; x.setLineDash([12, 9]);
+    x.beginPath(); x.moveTo(l, y); x.lineTo(r, y); x.stroke(); x.restore();
+    disc(x, l, y, 7, '#6ee7ff'); disc(x, r, y, 7, '#6ee7ff');
+    x.font = `500 26px ${FONT}`; const lw = x.measureText(label).width;
+    x.font = `700 34px ${FONT}`; const vw = x.measureText(val).width;
+    const cw = 22 + lw + 14 + vw + 22, ch = 64, cx1 = 986, cx0 = cx1 - cw;
+    x.strokeStyle = 'rgba(110,231,255,0.5)'; x.lineWidth = 2;
+    x.beginPath(); x.moveTo(r + 10, y); x.lineTo(cx0 - 8, y); x.stroke();
+    rr(x, cx0, y - ch / 2, cw, ch, 32); x.fillStyle = 'rgba(16,18,28,0.82)'; x.fill();
+    x.strokeStyle = 'rgba(255,255,255,0.14)'; x.lineWidth = 2; x.stroke();
+    text(x, label, cx0 + 22, y + 9, `500 26px ${FONT}`, '#9aa3b5');
+    text(x, val, cx0 + 22 + lw + 14, y + 12, `700 34px ${FONT}`, '#ffffff');
+  }
+
+  // height ruler
+  const top = 250, bot = 1562, rx = 150;
+  x.save(); x.strokeStyle = 'rgba(255,255,255,0.18)'; x.lineWidth = 2; x.setLineDash([8, 8]);
+  x.beginPath(); x.moveTo(rx, top); x.lineTo(448, top); x.moveTo(rx, bot); x.lineTo(396, bot); x.stroke(); x.restore();
+  x.strokeStyle = '#ffffff'; x.lineWidth = 3;
+  x.beginPath(); x.moveTo(rx, top); x.lineTo(rx, bot); x.stroke();
+  for (let i = 0; i <= 20; i++) {
+    const y = top + (bot - top) * i / 20, L = i % 5 === 0 ? 22 : 11;
+    x.beginPath(); x.moveTo(rx - L / 2, y); x.lineTo(rx + L / 2, y); x.stroke();
+  }
+  rr(x, rx - 92, 860, 184, 96, 28); x.fillStyle = 'rgba(16,18,28,0.92)'; x.fill();
+  x.strokeStyle = 'rgba(255,255,255,0.14)'; x.lineWidth = 2; x.stroke();
+  text(x, 'Magasság', rx, 896, `500 24px ${FONT}`, '#9aa3b5', 'center');
+  text(x, '178 cm', rx, 938, `700 36px ${FONT}`, '#ffffff', 'center');
+
+  // top bar
+  text(x, 'ChangAR', 60, 132, `800 68px ${FONT}`, brandGrad(x, 60, 0, 350, 0));
+  x.font = `600 28px ${FONT}`;
+  const stw = x.measureText('Mérés kész').width, pw = 24 + 16 + 12 + stw + 26, px0 = 964 - pw;
+  rr(x, px0, 82, pw, 60, 30); x.fillStyle = 'rgba(255,255,255,0.08)'; x.fill();
+  disc(x, px0 + 32, 112, 8, '#4ade80');
+  text(x, 'Mérés kész', px0 + 52, 122, `600 28px ${FONT}`, '#e8eaf0');
+
+  // bottom card: the selected garment (size suggestions are not built yet)
+  rr(x, 56, 1622, 912, 150, 40); x.fillStyle = 'rgba(18,20,30,0.88)'; x.fill();
+  x.strokeStyle = 'rgba(255,255,255,0.10)'; x.lineWidth = 2; x.stroke();
+  text(x, 'Kiválasztott ruha', 96, 1672, `500 24px ${FONT}`, '#9aa3b5');
+  text(x, 'Kötött pulóver', 96, 1728, `600 44px ${FONT}`, '#ffffff');
+  text(x, 'Váltás az érintőképernyőn', 928, 1712, `500 24px ${FONT}`, '#9aa3b5', 'right');
+  return c;
+}
+
+// Small garment icons for the touchscreen catalogue.
+function drawGarment(x, cx, cy, s, kind, color) {
+  const P = (u, v) => [cx + u * s, cy + v * s];
+  const fill = color || brandGrad(x, cx - s / 2, cy - s / 2, cx + s / 2, cy + s / 2);
+  x.save(); x.lineJoin = 'round'; x.lineCap = 'round';
+  if (kind === 'hoodie') {
+    x.beginPath(); x.ellipse(cx, cy - 0.42 * s, 0.22 * s, 0.17 * s, 0, Math.PI, Math.PI * 2); x.closePath();
+    x.fillStyle = '#353a47'; x.fill();
+  }
+  const pts = kind === 'tee'
+    ? [[-0.15, -0.44], [-0.36, -0.38], [-0.58, -0.14], [-0.46, 0.0], [-0.32, -0.10], [-0.32, 0.46], [0.32, 0.46], [0.32, -0.10], [0.46, 0.0], [0.58, -0.14], [0.36, -0.38], [0.15, -0.44]]
+    : [[-0.15, -0.44], [-0.36, -0.38], [-0.50, -0.10], [-0.56, 0.40], [-0.42, 0.42], [-0.36, 0.02], [-0.32, 0.46], [0.32, 0.46], [0.36, 0.02], [0.42, 0.42], [0.56, 0.40], [0.50, -0.10], [0.36, -0.38], [0.15, -0.44]];
+  x.beginPath(); x.moveTo(...P(...pts[0]));
+  for (let i = 1; i < pts.length; i++) x.lineTo(...P(...pts[i]));
+  x.quadraticCurveTo(...P(0, -0.30), ...P(...pts[0])); x.closePath();
+  x.fillStyle = fill; x.fill(); x.lineWidth = 6; x.strokeStyle = fill; x.stroke();
+  if (kind === 'sweater') {
+    x.fillStyle = 'rgba(0,0,0,0.18)';
+    x.fillRect(cx - 0.32 * s, cy + 0.38 * s, 0.64 * s, 0.08 * s);
+  }
+  if (kind === 'hoodie') {
+    rr(x, cx - 0.2 * s, cy + 0.12 * s, 0.4 * s, 0.2 * s, 0.06 * s); x.fillStyle = 'rgba(0,0,0,0.18)'; x.fill();
+    x.strokeStyle = '#d5d8e0'; x.lineWidth = 3;
+    x.beginPath(); x.moveTo(...P(-0.06, -0.36)); x.lineTo(...P(-0.07, -0.16)); x.moveTo(...P(0.06, -0.36)); x.lineTo(...P(0.07, -0.16)); x.stroke();
+  }
+  if (kind === 'shirt') {
+    x.fillStyle = '#e8f0ff';
+    x.beginPath(); x.moveTo(...P(-0.16, -0.45)); x.lineTo(...P(0, -0.31)); x.lineTo(...P(-0.11, -0.22)); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(...P(0.16, -0.45)); x.lineTo(...P(0, -0.31)); x.lineTo(...P(0.11, -0.22)); x.closePath(); x.fill();
+    for (let v = -0.22; v <= 0.4; v += 0.13) disc(x, cx, cy + v * s, 0.018 * s, '#ffffff');
+  }
+  x.restore();
+}
+
+// The 7" touchscreen control panel (BOM Rev G): garment grid, clothes and skeleton
+// toggles, the Measure button and the last result.
+function drawTouch() {
+  const W = 1024, H = 570, c = makeCanvas(W, H), x = c.getContext('2d');
+  x.fillStyle = '#0d0e13'; x.fillRect(0, 0, W, H);
+  text(x, 'ChangAR', 40, 64, `800 38px ${FONT}`, brandGrad(x, 40, 0, 205, 0));
+  let tx = 330;
+  for (const [label, on] of [['Ruhák', true], ['Mérés', false], ['Kijelző', false]]) {
+    x.font = `600 24px ${FONT}`; const w = x.measureText(label).width;
+    text(x, label, tx, 60, `600 24px ${FONT}`, on ? '#ffffff' : '#7d8494');
+    if (on) { rr(x, tx, 74, w, 4, 2); x.fillStyle = brandGrad(x, tx, 0, tx + w, 0); x.fill(); }
+    tx += w + 40;
+  }
+  x.font = `600 22px ${FONT}`;
+  const pill = 'Utolsó mérés: 178 cm', pw = x.measureText(pill).width + 36;
+  rr(x, 984 - pw, 32, pw, 42, 21); x.fillStyle = 'rgba(255,255,255,0.08)'; x.fill();
+  text(x, pill, 984 - pw / 2, 60, `600 22px ${FONT}`, '#e8eaf0', 'center');
+
+  const items = [
+    { name: 'Kötött pulóver', kind: 'sweater', color: null, sel: true },
+    { name: 'Póló', kind: 'tee', color: '#eceef3' },
+    { name: 'Kapucnis', kind: 'hoodie', color: '#4a5060' },
+    { name: 'Ing', kind: 'shirt', color: '#9cc3ff' },
+  ];
+  const cw = 224, gap = 16, x0 = 40, y0 = 100, ch = 296;
+  items.forEach((it, i) => {
+    const X = x0 + i * (cw + gap), cx = X + cw / 2;
+    rr(x, X, y0, cw, ch, 24); x.fillStyle = '#171a22'; x.fill();
+    if (it.sel) { rr(x, X + 2, y0 + 2, cw - 4, ch - 4, 22); x.lineWidth = 4; x.strokeStyle = brandGrad(x, X, y0, X + cw, y0 + ch); x.stroke(); }
+    drawGarment(x, cx, y0 + 112, 150, it.kind, it.color);
+    text(x, it.name, cx, y0 + 230, `600 24px ${FONT}`, '#ffffff', 'center');
+    if (it.sel) {
+      rr(x, cx - 62, y0 + 250, 124, 30, 15); x.fillStyle = brandGrad(x, cx - 62, 0, cx + 62, 0); x.fill();
+      text(x, 'Kiválasztva', cx, y0 + 271, `600 16px ${FONT}`, '#ffffff', 'center');
+    }
+  });
+  rr(x, 40, 428, 520, 100, 50); x.fillStyle = brandGrad(x, 40, 0, 560, 0); x.fill();
+  text(x, 'Mérés indítása', 300, 490, `700 34px ${FONT}`, '#ffffff', 'center');
+  // clothes and skeleton on/off switches
+  const toggle = (label, on, y) => {
+    text(x, label, 600, y + 8, `600 24px ${FONT}`, '#e8eaf0');
+    const t0 = 900, tw = 64, th = 34;
+    rr(x, t0, y - th / 2, tw, th, th / 2);
+    x.fillStyle = on ? brandGrad(x, t0, 0, t0 + tw, 0) : 'rgba(255,255,255,0.14)'; x.fill();
+    disc(x, on ? t0 + tw - th / 2 : t0 + th / 2, y, th / 2 - 4, '#ffffff');
+  };
+  toggle('Ruha', true, 455);
+  toggle('Csontváz', true, 503);
+  return c;
+}
+
+/* ======================================================================
+   Geometry helpers
+   ====================================================================== */
+const rbox = (w, h, d, r = 0, seg = 3) =>
+  r > 0 ? new RoundedBoxGeometry(w, h, d, seg, Math.min(r, Math.min(w, h, d) / 2 * 0.999)) : new THREE.BoxGeometry(w, h, d);
+const cylZ = (r, h, seg = 24) => new THREE.CylinderGeometry(r, r, h, seg).rotateX(Math.PI / 2);
+const cylY = (r, h, seg = 24) => new THREE.CylinderGeometry(r, r, h, seg);
+
+function roundedRectShape(w, h, r) {
+  const s = new THREE.Shape(), X = w / 2, Y = h / 2;
+  s.moveTo(-X + r, -Y);
+  s.lineTo(X - r, -Y); s.absarc(X - r, -Y + r, r, -Math.PI / 2, 0, false);
+  s.lineTo(X, Y - r); s.absarc(X - r, Y - r, r, 0, Math.PI / 2, false);
+  s.lineTo(-X + r, Y); s.absarc(-X + r, Y - r, r, Math.PI / 2, Math.PI, false);
+  s.lineTo(-X, -Y + r); s.absarc(-X + r, -Y + r, r, Math.PI, Math.PI * 1.5, false);
+  return s;
+}
+// Rounded-rectangle plate in XY, thickness d along Z, centred on the origin.
+function slab(w, h, d, r, bevel = 0) {
+  const shape = roundedRectShape(w - 2 * bevel, h - 2 * bevel, Math.max(0.0003, r - bevel));
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: d - 2 * bevel, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 12,
+  });
+  g.translate(0, 0, -(d - 2 * bevel) / 2);
+  return g;
+}
+
+// Collects geometry per material and merges it, so each part exports as a few meshes.
+class Part {
+  constructor(name) { this.name = name; this.items = new Map(); }
+  add(geo, mat, pos = [0, 0, 0], rot = [0, 0, 0]) {
+    const p = Array.isArray(pos) ? V(...pos) : pos;
+    const m = new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromEuler(new THREE.Euler(rot[0], rot[1], rot[2])), V(1, 1, 1));
+    return this.addM(geo, mat, m);
+  }
+  addM(geo, mat, matrix) {
+    const g = geo.index ? geo.toNonIndexed() : geo.clone();
+    g.clearGroups();
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    g.applyMatrix4(matrix);
+    if (!this.items.has(mat)) this.items.set(mat, []);
+    this.items.get(mat).push(g);
+    return this;
+  }
+  build() {
+    const grp = new THREE.Group(); grp.name = this.name;
+    for (const [mat, list] of this.items) {
+      const mesh = new THREE.Mesh(mergeVertices(mergeGeometries(list, false), 1e-5), mat);
+      mesh.name = `${this.name}_${mat.name}`;
+      grp.add(mesh);
+    }
+    return grp;
+  }
+}
+
+/* ======================================================================
+   Build
+   ====================================================================== */
+async function main() {
+  await document.fonts.load(`800 40px "Inter Var"`, 'ChangAR őűáé');
+  await document.fonts.load(`500 24px "Inter Var"`, 'ChangAR őűáé');
+  const mirrorCanvas = drawMirror(), touchCanvas = drawTouch();
+  $('#previews').append(mirrorCanvas, touchCanvas);
+
+  const std = (name, color, roughness = 0.5, metalness = 0, extra = {}) =>
+    new THREE.MeshStandardMaterial({ name, color: new THREE.Color(color), roughness, metalness, ...extra });
+  const screenMat = (name, canvas) => {
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace; t.userData.mimeType = 'image/jpeg'; t.anisotropy = 8;
+    return new THREE.MeshStandardMaterial({ name, color: 0x000000, roughness: 0.42, metalness: 0, emissive: 0xffffff, emissiveMap: t });
+  };
+  const M = {
+    monitor: std('MonitorBody', '#17181b', 0.55, 0.1),
+    glass: std('GlassBlack', '#050506', 0.08, 0),
+    stand: std('StandMetal', '#2c2d31', 0.38, 0.7),
+    bracket: std('Bracket', '#f0efea', 0.62, 0),            // the swatches on the site recolour this one
+    alu: std('Aluminium', '#b9bcc1', 0.38, 1),
+    pcbGreen: std('PCBGreen', '#2b7a3d', 0.45, 0),
+    pcbBlue: std('PCBBlue', '#1f4fa3', 0.45, 0),
+    silver: std('MetalSilver', '#cfd2d6', 0.28, 1),
+    black: std('PlasticBlack', '#141518', 0.6, 0),
+    chip: std('ChipBlack', '#1b1c1f', 0.4, 0),
+    gold: std('Gold', '#d9ab4f', 0.3, 1),
+    white: std('ConnectorWhite', '#ebe5d5', 0.6, 0),
+    usb3: std('USB3Blue', '#2563d8', 0.5, 0),
+    mesh: std('TransducerMesh', '#2b2b2e', 0.9, 0),
+    lens: std('LensGlass', '#0a1020', 0.05, 0.6),
+    flex: std('FlexCable', '#d6a043', 0.5, 0.2),
+    sticker: std('FanSticker', '#2a2b30', 0.5, 0),
+    led: std('PowerLED', '#ffffff', 0.3, 0, { emissive: new THREE.Color('#9fd8ff') }),
+    mirror: screenMat('MirrorScreen', mirrorCanvas),
+    touch: screenMat('TouchScreen', touchCanvas),
+  };
+
+  /* ---------- monitor ---------- */
+  const monitor = new Part('Monitor');
+  monitor.add(rbox(MON.w, MON.h, MON.d, 0.003), M.monitor, [0, MON.yc, -0.001]);              // z -0.008 … 0.006
+  monitor.add(new THREE.BoxGeometry(MON.w - 0.0006, MON.h - 0.0006, 0.0008), M.glass, [0, MON.yc, 0.0064]);
+  monitor.add(new THREE.PlaneGeometry(SCREEN.w, SCREEN.h), M.mirror, [0, MON.yc, 0.0073]);
+  monitor.add(rbox(0.22, 0.36, 0.030, 0.012), M.monitor, [0, 0.355, -0.020]);                 // electronics bulge
+  monitor.add(cylZ(0.0012, 0.0004, 16), M.led, [0.145, MON.bottom + 0.0035, 0.0071]);
+
+  /* ---------- stand ---------- */
+  const neck = new Part('Stand_Neck');
+  neck.add(rbox(0.10, 0.10, 0.010, 0.003), M.stand, [0, 0.37, -0.040]);                       // VESA plate
+  neck.add(rbox(0.056, 0.43, 0.026, 0.008), M.stand, [0, 0.229, -0.058]);                     // column
+  const base = new Part('Stand_Base');
+  base.add(slab(0.26, 0.20, 0.014, 0.06, 0.003), M.stand, [0, 0.007, -0.05], [-Math.PI / 2, 0, 0]);
+
+  /* ---------- placeholder 3D-printed holder ---------- */
+  const T = MON.top;
+  const qTilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(TILT, 0, 0));
+  const P = V(0, T + 0.0125, 0.005);                       // pivot: bottom front edge of the touchscreen glass
+  const tiltPt = (x, y, z) => V(x, y, z).applyQuaternion(qTilt).add(P);
+  const br = new Part('Bracket');
+  br.add(rbox(BRACKET_W, 0.004, 0.0215, 0.0012), M.bracket, [0, T + 0.002, -0.00075]);        // saddle bridge
+  br.add(rbox(BRACKET_W, 0.0085, 0.003, 0.0012), M.bracket, [0, T - 0.00025, 0.0085]);        // front lip
+  br.add(rbox(BRACKET_W, 0.054, 0.003, 0.0012), M.bracket, [0, T - 0.023, -0.010]);           // back lip
+  br.add(rbox(BRACKET_W, 0.005, 0.085, 0.002), M.bracket, [0, T + 0.0065, -0.0325]);          // platform
+  br.add(rbox(0.20, 0.008, 0.004, 0.0012), M.bracket, [0, T + 0.013, 0.008]);                 // front ledge
+  for (const sx of [-0.0995, 0.0995]) {                                                       // side arms
+    br.add(rbox(0.003, 0.135, 0.014, 0.001, 2), M.bracket, tiltPt(sx, 0.0605, -0.006), [TILT, 0, 0]);
+  }
+  br.add(rbox(0.21, 0.006, 0.030, 0.0015), M.bracket, [0, SHELF_Y, -0.030]);                  // level sensor shelf
+  br.add(rbox(0.030, 0.034, 0.003, 0.001, 2), M.bracket, [0, SHELF_Y + 0.003 + 0.017, -0.0205]);        // camera plate
+  br.add(rbox(0.047, 0.025, 0.003, 0.001, 2), M.bracket, [0.065, SHELF_Y + 0.003 + 0.0125, -0.0205]);   // sensor plate
+
+  /* ---------- 7" touchscreen (local frame: origin at the glass's bottom front edge) ---------- */
+  const disp = new Part('Touch_Display');
+  disp.add(rbox(TOUCH.w, TOUCH.h, 0.0025, 0.001, 2), M.glass, [0, TOUCH.h / 2, -0.00125]);
+  disp.add(new THREE.PlaneGeometry(...TOUCH.active), M.touch, [0, TOUCH.h / 2, 0.0005]);
+  disp.add(rbox(0.1649, 0.100, 0.006, 0.002, 2), M.alu, [0, TOUCH.h / 2, -0.0055]);         // metal back frame
+  disp.add(new THREE.BoxGeometry(0.090, 0.062, 0.0016), M.pcbGreen, [0, TOUCH.h / 2, -0.0093]); // adapter board
+
+  /* ---------- Raspberry Pi 4 (local: PCB centre, components on +Z, mm from bottom-left corner) ---------- */
+  const mm = v => v / 1000, PX = v => mm(v - 42.5), PY = v => mm(v - 28);
+  const pi = new Part('Raspberry_Pi_4');
+  const piBox = (cx, cy, sx, sy, sz, mat, z0 = 0) => pi.add(new THREE.BoxGeometry(mm(sx), mm(sy), mm(sz)), mat, [PX(cx), PY(cy), mm(z0) + mm(sz) / 2]);
+  pi.add(slab(0.085, 0.056, 0.0014, 0.003), M.pcbGreen, [0, 0, -0.0007]);
+  piBox(32.5, 52.5, 50.8, 5.08, 2.5, M.black);                                               // GPIO header
+  for (let i = 0; i < 20; i++) for (const dy of [-1.27, 1.27]) piBox(32.5 + (i - 9.5) * 2.54, 52.5 + dy, 0.64, 0.64, 6.0, M.gold, 2.5);
+  piBox(30, 32, 17, 17, 1.0, M.chip); piBox(30, 32, 14, 14, 2.4, M.silver);                  // SoC
+  piBox(46, 32, 10, 14, 1.0, M.chip);                                                        // RAM
+  piBox(12.5, 41, 12, 10, 1.4, M.silver);                                                    // wireless shield
+  piBox(64, 25, 6, 6, 0.9, M.chip); piBox(18, 23, 5, 5, 0.8, M.chip); piBox(52, 18, 3, 3, 0.6, M.chip);
+  piBox(77.1, 45.75, 21, 16, 13.5, M.silver); piBox(87.7, 45.75, 0.4, 11.5, 8.5, M.black, 2.0);           // Ethernet
+  piBox(78.85, 27, 17.5, 13.25, 16, M.silver);                                               // USB 2.0
+  piBox(87.7, 27, 0.4, 11, 4.5, M.black, 2.6); piBox(87.7, 27, 0.4, 11, 4.5, M.black, 10.4);
+  piBox(78.85, 9, 17.5, 13.25, 16, M.silver);                                                // USB 3.0
+  piBox(87.7, 9, 0.4, 11, 4.5, M.usb3, 2.6); piBox(87.7, 9, 0.4, 11, 4.5, M.usb3, 10.4);
+  piBox(11.2, 2.75, 9, 7.5, 3.2, M.silver);                                                  // USB-C power
+  piBox(26, 2.75, 7.5, 7.5, 3.0, M.silver); piBox(39.5, 2.75, 7.5, 7.5, 3.0, M.silver);      // micro HDMI ×2
+  piBox(53.5, 5.5, 7, 11, 5.6, M.black);                                                     // audio jack
+  pi.add(cylY(mm(3), mm(2.5), 20), M.black, [PX(53.5), PY(-1.25), mm(3)]);
+  piBox(45, 11.5, 22, 4.5, 4.5, M.white); piBox(45, 10.5, 22, 1.5, 1.2, M.black, 4.5);       // CSI (camera)
+  piBox(4.0, 28, 4.5, 22, 4.5, M.white); piBox(3.0, 28, 1.5, 22, 1.2, M.black, 4.5);         // DSI (display)
+  const holes = [[3.5, 3.5], [61.5, 3.5], [3.5, 52.5], [61.5, 52.5]];
+  for (const [hx, hy] of holes) {
+    pi.add(cylZ(mm(3), mm(0.2), 20), M.silver, [PX(hx), PY(hy), mm(0.1)]);
+    pi.add(cylZ(mm(2.9), 0.010, 6), M.silver, [PX(hx), PY(hy), -0.0014 - 0.005]);          // M2.5 × 10 standoffs
+  }
+
+  /* ---------- 40 mm fan (local: axis +Z, z 0 … 10 mm; posts reach down to the Pi) ---------- */
+  const fan = new Part('Fan');
+  const fs = roundedRectShape(0.040, 0.040, 0.003);
+  const ring = new THREE.Path(); ring.absarc(0, 0, 0.0186, 0, Math.PI * 2, true); fs.holes.push(ring);
+  for (const [hx, hy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const h = new THREE.Path(); h.absarc(hx * 0.016, hy * 0.016, 0.0017, 0, Math.PI * 2, true); fs.holes.push(h); }
+  fan.add(new THREE.ExtrudeGeometry(fs, { depth: 0.010, bevelEnabled: false, curveSegments: 24 }), M.black);
+  fan.add(cylZ(0.0078, 0.0094, 32), M.black, [0, 0, 0.0049]);
+  fan.add(cylZ(0.0062, 0.0004, 32), M.sticker, [0, 0, 0.0098]);
+  for (let i = 0; i < 7; i++) {
+    const m = new THREE.Matrix4().makeRotationZ(i / 7 * Math.PI * 2)
+      .multiply(new THREE.Matrix4().makeTranslation(0.0128, 0, 0.0055))
+      .multiply(new THREE.Matrix4().makeRotationX(30 * DEG));
+    fan.addM(new THREE.BoxGeometry(0.0108, 0.0072, 0.0008), M.black, m);
+  }
+  for (let i = 0; i < 4; i++) {
+    const m = new THREE.Matrix4().makeRotationZ((i + 0.5) / 4 * Math.PI * 2).multiply(new THREE.Matrix4().makeTranslation(0.0135, 0, 0.0008));
+    fan.addM(new THREE.BoxGeometry(0.012, 0.0018, 0.0016), M.black, m);
+  }
+  for (const [hx, hy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) fan.add(cylZ(0.0012, 0.012, 12), M.silver, [hx * 0.016, hy * 0.016, -0.006]);
+
+  /* ---------- Pi camera (local: PCB centre, lens on +Z) ---------- */
+  const cam = new Part('Camera');
+  cam.add(slab(0.025, 0.024, 0.001, 0.0015), M.pcbGreen, [0, 0, -0.0005]);
+  cam.add(new THREE.BoxGeometry(0.0085, 0.0085, 0.0035), M.black, [0, 0.0025, 0.00175]);
+  cam.add(cylZ(0.0036, 0.0016, 32), M.black, [0, 0.0025, 0.0043]);
+  cam.add(cylZ(0.0023, 0.0004, 32), M.lens, [0, 0.0025, 0.0053]);
+  cam.add(new THREE.BoxGeometry(0.0045, 0.0068, 0.0003), M.flex, [0, -0.0047, 0.00015]);
+  cam.add(new THREE.BoxGeometry(0.0055, 0.0040, 0.0012), M.white, [0, -0.0088, 0.0006]);
+  cam.add(new THREE.BoxGeometry(0.021, 0.0045, 0.0026), M.white, [0, -0.0095, -0.0023]);   // ribbon connector (back)
+  for (const [hx, hy] of [[-0.0105, 0.0095], [0.0105, 0.0095], [-0.0105, -0.003], [0.0105, -0.003]]) cam.add(cylZ(0.0011, 0.0002, 16), M.gold, [hx, hy, 0.0001]);
+
+  /* ---------- ultrasonic sensor (local: PCB centre, transducers on +Z) ---------- */
+  const us = new Part('Ultrasonic');
+  us.add(slab(0.045, 0.020, 0.0016, 0.001), M.pcbBlue, [0, 0, -0.0008]);
+  for (const sx of [-0.013, 0.013]) {
+    us.add(cylZ(0.008, 0.012, 40), M.silver, [sx, 0, 0.006]);
+    us.add(cylZ(0.0071, 0.0006, 40), M.mesh, [sx, 0, 0.0121]);
+  }
+  us.add(new THREE.BoxGeometry(0.0098, 0.0040, 0.0034), M.silver, [0, 0.0072, 0.0017]);     // crystal
+  us.add(new THREE.BoxGeometry(0.0102, 0.0025, 0.0025), M.black, [0, -0.0075, -0.00285]);   // header
+  for (let i = 0; i < 4; i++) us.add(new THREE.BoxGeometry(0.00064, 0.00064, 0.008), M.gold, [(i - 1.5) * 0.00254, -0.0075, -0.0056]);
+
+  /* ---------- assemble ---------- */
+  const place = (node, m) => { m.decompose(node.position, node.quaternion, node.scale); return node; };
+  const mDisp = new THREE.Matrix4().compose(P, qTilt, V(1, 1, 1));
+  const mPi = mDisp.clone().multiply(new THREE.Matrix4().compose(V(0, TOUCH.h / 2, -0.0215), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.PI), V(1, 1, 1)));
+  const mFan = mPi.clone().multiply(new THREE.Matrix4().makeTranslation(PX(30), PY(32), 0.012));
+
+  const root = new THREE.Group(); root.name = 'ChangAR';
+  const nodes = {
+    base: base.build(), neck: neck.build(), monitor: monitor.build(), bracket: br.build(),
+    display: place(disp.build(), mDisp), pi: place(pi.build(), mPi), fan: place(fan.build(), mFan),
+    camera: cam.build(), sonar: us.build(),
+  };
+  nodes.camera.position.set(0, SHELF_Y + 0.003 + 0.017, -0.018);
+  nodes.camera.rotation.set(0, 0, Math.PI / 2);                 // turned 90° for a portrait image
+  nodes.sonar.position.set(0.065, SHELF_Y + 0.003 + 0.0125, -0.018);
+  root.add(...Object.values(nodes));
+  const scene = new THREE.Scene(); scene.add(root);
+  root.updateMatrixWorld(true);
+
+  /* ---------- exploded view: t = 0 assembled, t = 1 exploded ----------
+     The whole head (holder + everything in it) lifts off the monitor first, then the
+     touchscreen slides out to the front, the Pi and fan out of the back, and the
+     camera and sensor up. Keys are [time, offset from the assembled position]. */
+  const LIFT = V(0, 0.14, 0);
+  const lifted = (x, y, z) => LIFT.clone().add(V(x, y, z));
+  const explode = [
+    [nodes.neck, [[0, V()], [0.45, V(0, 0, -0.12)]]],
+    [nodes.base, [[0, V()], [0.45, V(0, -0.10, -0.12)]]],
+    [nodes.bracket, [[0.05, V()], [0.45, LIFT]]],
+    [nodes.display, [[0.05, V()], [0.45, LIFT], [0.75, lifted(0, 0.01, 0.16)]]],
+    [nodes.camera, [[0.05, V()], [0.45, LIFT], [0.80, lifted(0, 0.13, 0.02)]]],
+    [nodes.sonar, [[0.05, V()], [0.45, LIFT], [0.80, lifted(0.03, 0.10, 0.02)]]],
+    [nodes.pi, [[0.05, V()], [0.45, LIFT], [0.85, lifted(0, 0, -0.10)]]],
+    [nodes.fan, [[0.05, V()], [0.45, LIFT], [0.85, lifted(0, 0, -0.10)], [1, lifted(0, 0.01, -0.17)]]],
+  ];
+  const tracks = explode.map(([node, keys]) => {
+    const k = keys.slice();
+    if (k[0][0] > 0) k.unshift([0, k[0][1]]);
+    if (k[k.length - 1][0] < 1) k.push([1, k[k.length - 1][1]]);
+    return new THREE.VectorKeyframeTrack(`${node.name}.position`, k.map(e => e[0]), k.flatMap(e => node.position.clone().add(e[1]).toArray()));
+  });
+  const clip = new THREE.AnimationClip('Explode', 1, tracks);
+
+  /* ---------- hotspots and framing info for index.html ---------- */
+  const hs = [
+    ['hotspot-camera', 'Kamera', nodes.camera, V(0, 0.0025, 0.0056), V(0, 0, 1), true],
+    ['hotspot-sonar', 'Ultrahangos távolságmérő', nodes.sonar, V(0.013, 0, 0.0124), V(0, 0, 1), false],
+    ['hotspot-touch', '7" érintőképernyő', nodes.display, V(0.05, TOUCH.h / 2, 0.0006), V(0, 0, 1), false],
+    ['hotspot-display', '24"-os álló monitor', nodes.monitor, V(-0.06, 0.40, 0.0074), V(0, 0, 1), true],
+    ['hotspot-pi', 'Raspberry Pi 4 + ventilátor', nodes.pi, V(PX(78.85), PY(18), 0.0161), V(0, 0, 1), false],
+    ['hotspot-bracket', '3D nyomtatott tartó (tervezés alatt)', nodes.bracket, V(-0.075, T - 0.00025, 0.0102), V(0, 0, 1), true],
+  ];
+  const f = (v, d) => `${v.x.toFixed(d)}m ${v.y.toFixed(d)}m ${v.z.toFixed(d)}m`;
+  const lines = hs.map(([slot, label, node, p, n, left]) => {
+    const wp = p.clone().applyMatrix4(node.matrixWorld), wn = n.clone().transformDirection(node.matrixWorld);
+    return `<button class="hotspot${left ? ' hotspot--left' : ''}" data-visibility-attribute="visible" slot="${slot}" data-position="${f(wp, 4)}" data-normal="${f(wn, 3)}" type="button">\n  <span class="hotspot__label">${label}</span>\n</button>`;
+  });
+  const box = new THREE.Box3().setFromObject(root), size = box.getSize(V()), center = box.getCenter(V());
+  $('#out').textContent = `Méret: ${f(size, 3)}\nKözéppont: ${f(center, 3)}\n\n${lines.join('\n')}`;
+
+  /* ---------- export ---------- */
+  const glb = await new GLTFExporter().parseAsync(scene, { binary: true, trs: true, onlyVisible: true, animations: [clip], maxTextureSize: 2048 });
+  const blob = new Blob([glb], { type: 'model/gltf-binary' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'changar.glb';
+  a.textContent = `changar.glb letöltése (${(blob.size / 1024).toFixed(0)} KB)`;
+  $('#download').append(a);
+
+  // With the dev server's /__save endpoint (?save), write straight into assets/models/.
+  if (new URLSearchParams(location.search).has('save')) {
+    const r = await fetch('/__save?path=assets/models/changar.glb', { method: 'POST', body: blob }).catch(() => null);
+    if (r && r.ok) { setStatus(`Kész, mentve: assets/models/changar.glb (${(blob.size / 1024).toFixed(0)} KB)`, 'ok'); return; }
+    setStatus('Kész, de a szerver nem mentette el. Töltsd le a fájlt, és tedd az assets/models/ mappába.', 'err');
+    return;
+  }
+  setStatus('Kész. Töltsd le a fájlt, és tedd az assets/models/ mappába.', 'ok');
+}
+
+try { await main(); }
+catch (e) { console.error(e); setStatus('Hiba: ' + (e && e.message ? e.message : e), 'err'); }
+</script>
+</body>
+</html>
