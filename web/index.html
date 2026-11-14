@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- ✏️ EDIT: page title + description (shown in browser tabs and link previews) -->
+  <title>ChangAR by G-niuszok · Több mint tükör</title>
+  <meta name="description" content="A ChangAR egy okostükör: egy kamera és egy ultrahangos szenzor segítségével lemér, és élőben rád illeszti a kiválasztott ruhát. A G-niuszok csapat építette 24 óra alatt a HARMAN Hackathon 2026-on.">
+  <meta name="author" content="G-niuszok">
+  <meta property="og:title" content="ChangAR by G-niuszok · Több mint tükör">
+  <meta property="og:description" content="Okostükör Raspberry Pi-on: lemér, és a monitoron élőben rád illeszti a ruhát. A G-niuszok csapat projektje a HARMAN Hackathon 2026-ról.">
+  <meta property="og:site_name" content="G-niuszok">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="hu_HU">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="vendor/fonts/inter-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+  <script>document.documentElement.classList.add('js')</script>
+  <script type="module" src="vendor/model-viewer.min.js"></script>
+  <script defer src="js/main.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Ugrás a tartalomhoz</a>
+
+<!-- ============================== NAVIGATION ============================== -->
+<header class="nav" id="nav">
+  <div class="nav__inner">
+    <a class="nav__brand" href="#top" aria-label="ChangAR, vissza az oldal tetejére">
+      <svg class="nav__logo" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6ee7ff"/><stop offset=".5" stop-color="#6d6bff"/><stop offset="1" stop-color="#ff6ba1"/></linearGradient></defs><rect x="7" y="3" width="10" height="18" rx="5" stroke="url(#logo-grad)"/></svg>
+      ChangAR <!-- ✏️ EDIT: project name -->
+    </a>
+    <nav class="nav__menu" id="nav-menu" aria-label="Szakaszok">
+      <a href="#overview">Ötlet</a>
+      <a href="#how">Működés</a>
+      <a href="#design">Felépítés</a>
+      <a href="#impact">Kinek?</a>
+      <a href="#future">Jövő</a>
+      <a href="#team">Csapat</a>
+    </nav>
+    <button class="nav__toggle" type="button" aria-expanded="false" aria-controls="nav-menu" aria-label="Menü megnyitása">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    </button>
+    <a class="nav__cta" href="#explore">3D nézet</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============================== 1 · HERO ============================== -->
+  <section class="hero" id="top" data-slide>
+    <div class="hero__glow" aria-hidden="true"></div>
+    <div class="hero__copy container">
+      <p class="hero__eyebrow intro" style="--d:.1s">HARMAN Hackathon 2026</p>
+      <!-- ✏️ EDIT: project + team name. The two parts only wrap between each other. -->
+      <h1 class="hero__title intro" style="--d:.2s"><span class="lockup__name grad-text grad-text--animated">ChangAR</span> <span class="lockup__by">by <span class="lockup__team">G-niuszok</span></span></h1>
+      <p class="hero__tagline intro" style="--d:.35s">Több mint tükör</p>
+      <div class="hero__ctas intro" style="--d:.5s">
+        <a class="btn" href="#explore">Nézd meg 3D-ben</a>
+        <a class="link-more" href="#how">Hogyan működik?</a>
+      </div>
+    </div>
+    <div class="hero__stage intro" style="--d:.45s">
+      <!-- ✏️ 3D: put your model at assets/models/changar.glb (see README → "Your 3D model") -->
+      <model-viewer class="mv hero__model" id="hero-model"
+        src="assets/models/changar.glb"
+        alt="A ChangAR: álló 24 colos monitor, a tetején 3D nyomtatott tartóban érintőképernyő, Raspberry Pi, kamera és távolságmérő"
+        camera-orbit="25deg 72deg 112%"
+        auto-rotate auto-rotate-delay="0" rotation-per-second="12deg"
+        camera-controls disable-zoom disable-pan touch-action="pan-y" interaction-prompt="none"
+        environment-image="neutral" tone-mapping="neutral" exposure="1.05" shadow-intensity="0"
+        loading="eager">
+        <div slot="progress-bar"></div>
+      </model-viewer>
+    </div>
+  </section>
+
+  <!-- ============================== 2 · IDEA (in keywords) ============================== -->
+  <section class="section statement slide" id="overview" data-slide>
+    <div class="container">
+      <p class="eyebrow reveal">Az ötlet</p>
+      <!-- ✏️ EDIT: words light up as you scroll; wrap key words in <span class="hl"> for the gradient. -->
+      <p class="scrub-text" data-scrub>
+        Az M nem mindenhol M, és senki nem szeret sorban állni a próbafülkénél.
+        Ezért építettünk egy tükröt, ami <span class="hl">lemér, és élőben rád illeszti a ruhát.</span>
+      </p>
+      <ul class="spaces idea__keys reveal" aria-label="Az ötlet címszavakban">
+        <li>Okostükör</li><li>Testmérés kamerával</li><li>Virtuális ruhapróba</li><li>Raspberry Pi</li><li>Felhő nélkül</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================== 3 · PRODUCT: what it does ============================== -->
+  <section class="section section--white how slide" id="how" data-slide>
+    <div class="container container--wide">
+      <div class="section-head section-head--center">
+        <p class="eyebrow reveal">A termék</p>
+        <h2 class="section-title reveal">Hogyan működik?</h2>
+      </div>
+      <ol class="flow">
+        <li class="flow__step reveal">
+          <span class="flow__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8.5A1.5 1.5 0 0 1 5 7h2.5L9 5h6l1.5 2H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg></span>
+          <span class="flow__num">01</span>
+          <h3>Állj elé a kijelölt helyre</h3>
+        </li>
+        <li class="flow__step reveal" style="--d:.08s">
+          <span class="flow__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3M10 8v4.5M13.5 8v3M17 8v4.5"/></svg></span>
+          <span class="flow__num">02</span>
+          <h3>Várj pár másodpercet</h3>
+        </li>
+        <li class="flow__step reveal" style="--d:.16s">
+          <span class="flow__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5L4 6l-1.5 4.5 3 1v9h13v-9l3-1L20 6l-4.5-2.5a3.5 3.5 0 0 1-7 0z"/></svg></span>
+          <span class="flow__num">03</span>
+          <h3>Már kezdhetsz is válogatni</h3>
+        </li>
+      </ol>
+      <p class="eyebrow how__pros reveal">Előnyök</p>
+      <ul class="stack reveal" aria-label="Előnyök">
+        <li>Nem kell átöltözni</li><li>Nincs sorban állás</li><li>Kevesebb visszaküldés</li><li>Minden helyben fut</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================== 4 · PRODUCT: build (scroll-driven 3D) ==============================
+       Each .story__step is one "chapter" while the model stays pinned.
+       data-orbit   = camera angle "theta phi radius"  (use ?edit to read values from the live model)
+       data-explode = 0…1, scrubs the model's first animation (e.g. an exploded view) if it has one
+       data-target  = optional orbit centre "x y z" in metres, to frame one part of the model -->
+  <section class="story" id="design" aria-label="Felépítés">
+    <div class="story__sticky">
+      <div class="story__stage">
+        <div class="story__light" aria-hidden="true"></div>
+        <model-viewer class="mv" id="story-model"
+          src="assets/models/changar.glb"
+          alt="A ChangAR forog, és szétszedve is megmutatja az alkatrészeit"
+          camera-orbit="25deg 80deg 118%" camera-target="0m 0.43m -0.03m" max-camera-orbit="auto auto 400%" min-camera-orbit="auto 5deg 0.1m"
+          interpolation-decay="110" interaction-prompt="none"
+          environment-image="neutral" tone-mapping="neutral" exposure="1.05" shadow-intensity="0"
+          loading="lazy">
+          <div slot="progress-bar"></div>
+        </model-viewer>
+      </div>
+      <div class="story__copy">
+        <div class="story__step is-active" data-orbit="25deg 80deg 118%" data-target="0m 0.43m -0.03m" data-explode="0">
+          <p class="eyebrow">Felépítés</p>
+          <h2>Egy álló monitor és egy tartó</h2>
+          <p>A tükör egy álló 24 colos monitor. Minden más a tetejére kerül, egy 3D nyomtatott tartóba.</p>
+        </div>
+        <div class="story__step" data-orbit="15deg 85deg 29%" data-target="0.06m 0.725m 0m" data-explode="0">
+          <p class="eyebrow">Mérés</p>
+          <h2>Kamera és ultrahangos szenzor</h2>
+          <p>A kamera lát, a szenzor méri, milyen messze állsz. Így lesz a pixelből centiméter.</p>
+        </div>
+        <div class="story__step" data-orbit="155deg 75deg 66%" data-target="0m 0.79m -0.06m" data-explode="1">
+          <p class="eyebrow">Belül</p>
+          <h2>Egy Raspberry Pi számol mindent</h2>
+          <p>A kijelző hátán ül, egy hűtőborda hűti. Nincs szerver, nincs felhő.</p>
+        </div>
+        <div class="story__step" data-orbit="-25deg 84deg 32%" data-target="0.02m 0.70m 0m" data-explode="0">
+          <p class="eyebrow">Vezérlés</p>
+          <h2>Az érintőképernyőn irányítod</h2>
+          <p>Ruhát választasz, elindítod a mérést, és a visszaszámlálás alatt a lábnyomokra állsz.</p>
+        </div>
+      </div>
+      <div class="story__dots" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- ============================== 5 · EXPLORE (interactive 3D; on the page only, hidden in presentation mode) ============================== -->
+  <section class="section explore slide" id="explore">
+    <div class="container container--wide">
+      <div class="section-head">
+        <p class="eyebrow reveal">3D modell</p>
+        <h2 class="section-title reveal">Forgasd meg, szedd szét</h2>
+      </div>
+      <div class="viewer reveal">
+        <!-- ✏️ 3D: the model and these hotspot positions come from tools/changar-model.html (it prints them after generating). -->
+        <model-viewer class="mv" id="explore-model"
+          src="assets/models/changar.glb"
+          alt="A ChangAR interaktív 3D modellje: álló monitor, a tetején tartóban érintőképernyő, Raspberry Pi, kamera és távolságmérő. Húzd a forgatáshoz."
+          camera-orbit="25deg 78deg 102%" max-camera-orbit="auto auto 400%"
+          camera-controls touch-action="pan-y" interaction-prompt="auto"
+          ar ar-modes="webxr scene-viewer quick-look"
+          environment-image="neutral" tone-mapping="neutral" exposure="1.05"
+          shadow-intensity="1" shadow-softness="0.9"
+          data-exploded-radius="132%" loading="lazy">
+          <button class="hotspot" data-visibility-attribute="visible" slot="hotspot-camera" data-position="0.1090m 0.6985m 0.0141m" data-normal="0.000m 0.000m 1.000m" type="button">
+            <span class="hotspot__label">Kamera, 3D nyomtatott tartóban</span>
+          </button>
+          <button class="hotspot hotspot--left" data-visibility-attribute="visible" slot="hotspot-sonar" data-position="0.0460m 0.7691m 0.0058m" data-normal="0.000m 0.000m 1.000m" type="button">
+            <span class="hotspot__label">Ultrahangos távolságmérő</span>
+          </button>
+          <button class="hotspot hotspot--left" data-visibility-attribute="visible" slot="hotspot-touch" data-position="-0.0400m 0.7037m 0.0009m" data-normal="0.000m 0.000m 1.000m" type="button">
+            <span class="hotspot__label">7" érintőképernyő</span>
+          </button>
+          <button class="hotspot hotspot--left" data-visibility-attribute="visible" slot="hotspot-display" data-position="-0.0600m 0.4000m 0.0074m" data-normal="0.000m 0.000m 1.000m" type="button">
+            <span class="hotspot__label">24"-os álló monitor</span>
+          </button>
+          <button class="hotspot" data-visibility-attribute="visible" slot="hotspot-pi" data-position="0.0233m 0.7137m -0.0373m" data-normal="0.000m 0.000m -1.000m" type="button">
+            <span class="hotspot__label">Raspberry Pi 4 hűtőbordával</span>
+          </button>
+          <button class="hotspot" data-visibility-attribute="visible" slot="hotspot-bracket" data-position="0.0350m 0.6428m 0.0089m" data-normal="0.000m 0.000m 1.000m" type="button">
+            <span class="hotspot__label">3D nyomtatott tartó</span>
+          </button>
+          <button class="ar-btn" slot="ar-button" type="button">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+            Nézd meg a saját szobádban
+          </button>
+          <div slot="progress-bar"></div>
+        </model-viewer>
+        <div class="viewer__bar">
+          <!-- Finish swatches recolour the material named in data-material. Hidden automatically if your model has no such material. -->
+          <!-- Recolours the 3D-printed holder (material "Bracket"). data-color is linear RGB. -->
+          <div class="swatches" data-material="Bracket" role="radiogroup" aria-label="A tartó filamentszíne">
+            <button class="swatch is-active" type="button" role="radio" aria-checked="true"  aria-label="Fekete PLA"  data-name="Fekete PLA"  data-color="0.014,0.014,0.016" style="--c:#202022"></button>
+            <button class="swatch"           type="button" role="radio" aria-checked="false" aria-label="Fehér PLA"   data-name="Fehér PLA"   data-color="0.871,0.863,0.823" style="--c:#f0efea"></button>
+            <button class="swatch"           type="button" role="radio" aria-checked="false" aria-label="Narancs PLA" data-name="Narancs PLA" data-color="0.888,0.147,0.012" style="--c:#f26b1d"></button>
+            <button class="swatch"           type="button" role="radio" aria-checked="false" aria-label="Indigó PLA"  data-name="Indigó PLA"  data-color="0.153,0.147,1.0" style="--c:#6d6bff"></button>
+            <span class="swatches__name" aria-live="polite">Fekete PLA</span>
+          </div>
+          <div class="segmented" data-explode-toggle role="group" aria-label="Nézet">
+            <button class="is-active" type="button" data-explode="0" aria-pressed="true">Összerakva</button>
+            <button type="button" data-explode="1" aria-pressed="false">Szétszedve</button>
+          </div>
+        </div>
+      </div>
+      <p class="viewer__hint reveal">Húzással forgathatod, nagyítani két ujjal vagy Ctrl + görgetéssel tudsz.</p>
+    </div>
+  </section>
+
+  <!-- ============================== 6 · PRODUCT: who it is for ============================== -->
+  <section class="section section--light impact slide" id="impact" data-slide>
+    <div class="container container--wide">
+      <div class="section-head">
+        <p class="eyebrow reveal">Felhasználás</p>
+        <h2 class="section-title reveal">Kinek segít?</h2>
+        <p class="lead reveal">Próbafülkében, ruhaboltban, plázában, de akár otthon is.</p>
+      </div>
+      <div class="people">
+        <article class="person reveal">
+          <svg class="icon person__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5L4 6l-1.5 4.5 3 1v9h13v-9l3-1L20 6l-4.5-2.5a3.5 3.5 0 0 1-7 0z"/></svg>
+          <h3>Vásárlóknak</h3>
+          <p>Nem kell átöltözni, és nem kell sorban állni.</p>
+        </article>
+        <article class="person reveal" style="--d:.05s">
+          <svg class="icon person__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5V20h16V9.5"/><path d="M3 9.5l1.5-5h15l1.5 5z"/><path d="M10 20v-5h4v5"/></svg>
+          <h3>Boltoknak</h3>
+          <p>Kevesebb ruha jön vissza rossz méret miatt.</p>
+        </article>
+        <article class="person reveal" style="--d:.1s">
+          <svg class="icon person__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8L12 4l8.5 4v8L12 20l-8.5-4z"/><path d="M3.5 8L12 12l8.5-4M12 12v8"/></svg>
+          <h3>Webshopoknak</h3>
+          <p>Aki ismeri a méreteit, jobban választ.</p>
+        </article>
+        <article class="person reveal" style="--d:.15s">
+          <svg class="icon person__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5S3.5 15.6 3.5 9.6A4.4 4.4 0 0 1 12 7.4a4.4 4.4 0 0 1 8.5 2.2c0 6-8.5 10.9-8.5 10.9z"/></svg>
+          <h3>Akiknek nehéz az átöltözés</h3>
+          <p>Idősebbeknek, vagy ha valaki sérült.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 7 · PRODUCT: the next 5 years ============================== -->
+  <section class="section section--white roadmap slide" id="roadmap" data-slide>
+    <div class="container container--wide">
+      <div class="section-head">
+        <p class="eyebrow reveal">Továbbfejlesztés</p>
+        <h2 class="section-title reveal">Mi jön még 5 év alatt?</h2>
+      </div>
+      <ol class="roadmap5">
+        <li class="reveal"><time>Most</time><p>Működő prototípus</p><span>Lemér, és rád illeszti a ruhát.</span></li>
+        <li class="reveal" style="--d:.06s"><time>1 év</time><p>Méretajánlás</p><span>Mérettáblázatok alapján, kipróbálva egy boltban.</span></li>
+        <li class="reveal" style="--d:.12s"><time>3 év</time><p>3D ruhák</p><span>Erősebb hardveren, webshopokkal összekötve.</span></li>
+        <li class="reveal" style="--d:.18s"><time>5 év</time><p>Saját méretprofil</p><span>Egy mérés, amit boltban és online is használsz.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============================== 8 · INNOVATION & FUTURE ============================== -->
+  <section class="section section--light planet slide" id="future" data-slide>
+    <div class="container container--wide">
+      <div class="section-head">
+        <p class="eyebrow reveal">Innováció és jövő</p>
+        <h2 class="section-title reveal">Miért lesz fontos 30 év múlva is?</h2>
+        <p class="lead reveal">Mert egyszerre mér és felöltöztet, és mindezt helyben, felhő nélkül csinálja.</p>
+      </div>
+      <!-- ✏️ EDIT: only claims you can back up -->
+      <div class="planet-grid">
+        <article class="planet-item reveal"><strong>Online</strong><h3>A méret marad a kérdés</h3><p>Ruhát akkor is fel kell próbálni, csak egyre többet veszünk a neten.</p></article>
+        <article class="planet-item reveal" style="--d:.05s"><strong>Kevesebb</strong><h3>Visszaküldés és szállítás</h3><p>Ami elsőre jó, azt nem kell visszaküldeni. Ez a bolygónak is jobb.</p></article>
+        <article class="planet-item reveal" style="--d:.1s"><strong>Kisebb</strong><h3>Olcsóbb hardver</h3><p>Ami ma egy Pi és egy monitor, az később bármelyik tükör keretébe belefér.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 9 · TEAM ============================== -->
+  <section class="section team slide" id="team" data-slide>
+    <div class="container container--wide">
+      <div class="team-split">
+        <!-- ✏️ TEAM: group photo at assets/img/team-group.jpg (portrait, 3:4) -->
+        <figure class="team-photo reveal">
+          <img src="assets/img/team-group.jpg" alt="A G-niuszok csapat négy tagja egymást átkarolva, a hackathon kék-fehér lufifala előtt" loading="lazy" data-fallback>
+          <figcaption>Székesfehérvár · 2026. november 13–14.</figcaption>
+        </figure>
+        <div class="team-head">
+          <p class="eyebrow reveal">G-niuszok</p>
+          <h2 class="section-title reveal">Négyen építettük, 24 óra alatt</h2>
+        </div>
+        <!-- ✏️ TEAM: optional portraits in assets/img/team-1.jpg … team-4.jpg (square). Initials show until then. -->
+        <div class="team-list">
+          <article class="member reveal">
+            <div class="member__photo" data-initials="TG"><img src="assets/img/team-1.jpg" alt="" loading="lazy" data-fallback></div>
+            <h3>Takács Gergő</h3><p class="member__role">Infrastruktúra-felelős</p>
+          </article>
+          <article class="member reveal" style="--d:.06s">
+            <div class="member__photo" data-initials="HP"><img src="assets/img/team-2.jpg" alt="" loading="lazy" data-fallback></div>
+            <h3>Haász Péter Márk</h3><p class="member__role">3D tervező</p>
+          </article>
+          <article class="member reveal" style="--d:.12s">
+            <div class="member__photo" data-initials="JB"><img src="assets/img/team-3.jpg" alt="" loading="lazy" data-fallback></div>
+            <h3>Jambrik-Decsi Bence</h3><p class="member__role">Beágyazott rendszerek &amp; Raspberry Pi specialista</p>
+          </article>
+          <article class="member reveal" style="--d:.18s">
+            <div class="member__photo" data-initials="SA"><img src="assets/img/team-4.jpg" alt="" loading="lazy" data-fallback></div>
+            <h3>Szűcs Alex</h3><p class="member__role">Szoftverfejlesztés</p>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 10 · QUESTIONS ============================== -->
+  <section class="closing questions" id="questions" data-slide>
+    <h2 class="closing__title reveal">Kérdések?</h2>
+  </section>
+
+  <!-- ============================== 11 · CLOSING ============================== -->
+  <section class="closing" id="thanks" data-slide>
+    <div class="closing__glow" aria-hidden="true"></div>
+    <p class="eyebrow reveal">Köszönjük a figyelmet!</p>
+    <h2 class="closing__title reveal"><span class="lockup__name grad-text grad-text--animated">ChangAR</span> <span class="lockup__by">by <span class="lockup__team">G-niuszok</span></span></h2>
+    <p class="closing__tagline reveal">Próbáld fel, anélkül, hogy felpróbálnád.</p>
+    <div class="hero__ctas reveal">
+      <a class="btn" href="#explore">Nézd meg 3D-ben</a>
+      <a class="link-more" href="#top">Vissza az elejére</a>
+    </div>
+  </section>
+</main>
+
+<!-- ============================== FOOTER ============================== -->
+<footer class="footer">
+  <div class="container container--wide">
+    <p>Az V. Junior Engineers Camp – HARMAN Hackathonon készült 24 óra alatt (Sóstói Stadion, Székesfehérvár, 2026. november 13–14.). Diákprojekt, a HARMAN hivatalosan nem áll mögötte.</p>
+    <div class="footer__bottom">
+      <p>© 2026 G-niuszok. Minden jog fenntartva.</p>
+      <button class="footer__present" type="button" data-present>Prezentáció <kbd>P</kbd></button>
+    </div>
+  </div>
+</footer>
+
+<!-- Presentation mode UI (press P) -->
+<div class="present-hud" id="present-hud" aria-hidden="true">
+  <span class="present-hud__count">1 / 1</span>
+  <span class="present-hud__bar"><i></i></span>
+</div>
+<div class="present-timer" id="present-timer" aria-hidden="true">8:00</div>
+<div class="blackout" id="blackout" aria-hidden="true"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
