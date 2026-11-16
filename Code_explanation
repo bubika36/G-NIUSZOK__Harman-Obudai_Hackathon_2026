@@ -1,0 +1,56 @@
+Itt a 3. pont szövege beilleszthető formában, a képen látható három kérdés szerint. Csak azt írtam le, ami a kódból biztosan tudható. A mechanikát és a zsűri visszajelzéseit nektek kell kitölteni, ezeket szögletes zárójellel jelöltem.
+
+---
+
+**3. Műszaki megvalósítás és rendszerarchitektúra**
+
+**Szoftveres működés**
+
+A rendszer Pythonban készült, és teljesen helyben fut egy Raspberry Pi 4-en (64 bites Raspberry Pi OS). Nincs felhő, a kamera képe nem hagyja el az eszközt. Két program fut párhuzamosan, és UDP-n beszélgetnek a Pi-n belül:
+
+1. **A tükörprogram** a monitoron mutatja a tükrözött élőképet a felpróbált ruhákkal.
+2. **A vezérlőpanel** az érintőképernyőn fut: itt lehet ruhát választani, ki- és bekapcsolni a ruhát és a csontvázat, valamint mérést indítani.
+
+Bármelyik program újraindítható a másik leállítása nélkül.
+
+A feldolgozás menete:
+
+- **Kamera:** Raspberry Pi Camera Module 2. A teljes látószögű 1640×1232-es szenzormódot használjuk, amit a Pi képfeldolgozója 640×480-ra kicsinyít, álló tájolásban.
+- **Testkövetés:** MediaPipe Pose (gépi tanulásos modell) adja minden képkockán a test 33 pontját, 3D-s koordinátákkal, és mellé a személy körvonalát (szegmentációs maszk). A képfeldolgozás OpenCV-vel, a megjelenítés pygame-mel történik.
+- **Virtuális próba:**
+  - A ruhák előre renderelt képek, 15 fokonként, 24 nézetből. A rendszer a 3D-s vállpontokból kiszámolja, mennyire fordult el a felhasználó, és a két legközelebbi nézetet összemossa, így a ruha vele fordul.
+  - A pólóujjak külön darabok, amelyek a felkart követik. A nadrágszárak térdben hajlanak.
+  - A mélységadatból a rendszer azt is eldönti, hogy a kar a test előtt vagy mögött van-e. Ettől függően az ujj a póló elé vagy mögé kerül, a valódi alkar és kéz pedig a ruha fölé.
+  - Felső és alsó ruha (póló + nadrág) egyszerre viselhető.
+- **Testméretek:** magasság, mellkas-, derék- és csípőszélesség, lábhossz és combszélesség. A képpontokat a tűlyukkamera-modellel váltjuk át centiméterre, és a kamera dőlésszögét is figyelembe vesszük. 15 képkocka mediánját vesszük, egész centiméterre kerekítve.
+- **Távolságmérés:** elsődlegesen a talp képbeli helyzetéből számoljuk. Ehhez egyszeri kalibráció kell (kameramagasság és dőlésszög). Tartalékként ott van a HC-SR04 ultrahangos szenzor (feszültségosztóval), végső esetben pedig a padlón kijelölt 2,4 m-es vonal. A monitor tetején magyar nyelvű felirat mondja meg, hogy lépjen hátrébb vagy közelebb.
+- **Pózellenőrzés:** a mérés előtt egy figura mutatja a helyes testtartást. A rendszer valós időben százalékosan értékeli az egyezést, és testrészenként színez (zöld, sárga, piros). A mérés automatikusan indul, ha az egyezés legalább 1 másodpercig 75% feletti.
+- **Felület:** teljesen magyar. A mérések a `measurements.jsonl` fájlba mentődnek. A kódhoz 101 automatikus teszt tartozik, amelyek hardver nélkül is futnak.
+
+**Mechanika és kivitelezés**
+
+[Ezt nektek kell kitölteni: keret, tükörfólia vagy üveg, 3D nyomtatott alkatrészek, tápellátás, a kamera rögzítése és dőlésszöge.]
+
+**Fejlesztési folyamat és tesztelés**
+
+Ezekbe az akadályokba ütköztünk:
+
+- **Méretmérési hiba:** egy 172 cm-es tesztalanyt a rendszer 247 cm-nek mért. Az ok: a kamera 640×480-as módja a szenzornak csak a közepét használja, ami kb. 2,5-szörös digitális zoomot jelent. A teljes látószögű szenzormódra váltással megoldottuk.
+- **Szoftverkompatibilitás:**
+  - A 32 bites rendszeren a MediaPipe nem fut, ezért 64 bites rendszerre váltottunk.
+  - Az újabb MediaPipe olyan processzorfunkciót igényel, ami a Pi 4-ből hiányzik. A 0.10.18-as verzióra rögzítettük, a numpy-t pedig 2 alatti verzióra.
+- **Ultrahangos szenzor:**
+  - Az 5 V-os Echo jel veszélyes a Pi 3,3 V-os bemenetére, ezért 1 kΩ / 2 kΩ-os feszültségosztót forrasztottunk be.
+  - A gyári szenzorkezelő könyvtár kiolvasása blokkolta a programot, ha nem jött visszhang. Saját, háttérszálas olvasót írtunk helyette.
+- **Kijelzők:** Wayland alatt a két kijelzőn való megjelenítést külön be kellett állítani.
+- **Teljesítmény:**
+  - A ruha rajzolása képkockánként néhány milliszekundum, a karok visszarajzolása kb. 0,7 ms (fejlesztői gépen mérve).
+  - [Pi-n mért FPS és válaszidő: töltsétek ki.]
+- **Visszajelzés:** [a zsűri visszajelzése: töltsétek ki.]
+
+---
+
+Két dolog nem egyezik azzal, amit a beszélgetésünkből ismerek, ezeket nézzétek át:
+
+- **Kijelzők:** a kép 43 colos kijelzőt és infravörös érintőkeretet említ. A kód eredetileg 24 colos monitorra és 7 colos érintőképernyőre készült. Ha a végleges változat más lett, írjátok át.
+- **Webes rész:** a Docker Compose + Caddy + Portainer webes prezentációs rész nem az én kódom része, azt nektek kell leírni.
