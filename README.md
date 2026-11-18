@@ -6,6 +6,5 @@ cd ~/smart-mirror && ~/mirror-venv/bin/python calibrate_floor.py --camera-height
 
 scp "C:\Users\svc_huedu\Downloads\smart-mirror.zip" admin@192.168.11.163:
 
-cd ~ && unzip -o smart-mirror.zip
 
 sed -i 's/"fixed_distance_m": 2.4/"fixed_distance_m": 2.45/' ~/smart-mirror/config.json
